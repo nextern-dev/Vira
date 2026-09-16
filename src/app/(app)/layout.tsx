@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { AppearanceProvider } from "@/components/appearance-provider";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -12,10 +11,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [categories, authSession] = await Promise.all([
-    listCategories(user.id),
-    auth(),
-  ]);
+  const categories = await listCategories(user.id);
 
   return (
     <AppearanceProvider
@@ -25,7 +21,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         user={{
           name: user.name,
           email: user.email,
-          avatarUrl: authSession?.user?.image ?? null,
+          avatarUrl: user.avatarUrl,
         }}
         categories={categories}
       >
