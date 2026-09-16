@@ -14,6 +14,7 @@ export function googleConfigured(): boolean {
 async function linkGoogleAccount(
   email: string,
   displayName: string | null,
+  imageUrl: string | null,
 ): Promise<boolean> {
   try {
     const [existing] = await db
@@ -30,12 +31,15 @@ async function linkGoogleAccount(
         .values({
           email,
           name,
+          avatarUrl: imageUrl,
           passwordHash: null,
           provider: "google",
           emailVerifiedAt: new Date(),
         })
         .returning({ id: users.id });
       userId = created.id;
+    } else if (imageUrl) {
+      await db.update(users).set({ avatarUrl: imageUrl, updatedAt: new Date() }).where(eq(users.id, userId));
     }
 
     await createSession(userId);
@@ -76,7 +80,11 @@ const config: NextAuthConfig = {
         profile && "email_verified" in profile ? profile.email_verified === true : false;
       if (!emailVerified) return "/login?error=oauth_email_unverified";
 
-      const ok = await linkGoogleAccount(email, user.name ?? null);
+      const ok = await linkGoogleAccount(
+        email,
+        user.name ?? null,
+        typeof user.image === "string" ? user.image : null,
+      );
       return ok ? "/dashboard" : "/login?error=oauth_link_failed";
     },
   },
