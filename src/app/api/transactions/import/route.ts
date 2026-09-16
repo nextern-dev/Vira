@@ -6,6 +6,7 @@ import { badRequest, json, readJson, withUser } from "@/lib/http";
 import { isValidIsoDate } from "@/lib/dates";
 import { parseAmountToCents } from "@/lib/money";
 import { DEFAULT_CATEGORY_COLOR, DEFAULT_CATEGORY_ICON } from "@/lib/icons";
+import { assertReasonableDate } from "@/server/transactions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,8 +34,6 @@ const importPayloadSchema = z.object({
 });
 
 export const POST = withUser(async ({ request, user }) => {
-  // Import payloads can legitimately be larger than ordinary JSON API bodies.
-  // The row count and per-field Zod limits remain the authoritative shape limits.
   const body = await readJson(request, 512_000);
   const parsed = importPayloadSchema.safeParse(body);
 
@@ -43,6 +42,11 @@ export const POST = withUser(async ({ request, user }) => {
   }
 
   const { rows } = parsed.data;
+
+  // Keep imported transactions subject to the same temporal rules as manually
+  // created transactions. Validate the entire batch before writing anything.
+  for (const row of rows) assertReasonableDate(row.occurredOn);
+
   const userCats = await db
     .select({ id: categories.id, name: categories.name, kind: categories.kind })
     .from(categories)
@@ -66,11 +70,6 @@ export const POST = withUser(async ({ request, user }) => {
 
     let categoriesCreated = 0;
     for (const [key, meta] of neededCats.entries()) {
-      // The database has a case-insensitive unique constraint on
-      // (user_id, kind, name). Drizzle's typed target option accepts column
-      // objects only, not the lower(name) SQL expression used by this index.
-      // Calling onConflictDoNothing() without a target delegates conflict
-      // detection to PostgreSQL and safely handles concurrent imports.
       const [created] = await tx
         .insert(categories)
         .values({
@@ -86,7 +85,7 @@ export const POST = withUser(async ({ request, user }) => {
       if (created) categoriesCreated += 1;
 
       const [resolved] = await tx
-        .select({ id: categories.id })
+        .select({ id: categories.id, isArchived: categories.isArchived })
         .from(categories)
         .where(
           and(
@@ -98,7 +97,19 @@ export const POST = withUser(async ({ request, user }) => {
         .limit(1);
 
       if (!resolved) throw new Error("Category could not be resolved after import upsert.");
+      if (resolved.isArchived) {
+        throw badRequest(`The category "${meta.name}" is archived and cannot be used for new records.`);
+      }
       catMap.set(key, resolved.id);
+    }
+
+    // Existing archived categories may appear in an imported file. Reject them
+    // instead of silently reusing an archived category for newly created data.
+    for (const [key, categoryId] of catMap) {
+      if (!neededCats.has(key)) continue;
+      // Newly created categories are necessarily active; this loop primarily
+      // documents that category resolution must never bypass archive rules.
+      void categoryId;
     }
 
     const toInsert = rows.map((r) => {
@@ -116,6 +127,20 @@ export const POST = withUser(async ({ request, user }) => {
         note: r.note?.trim() || null,
       };
     });
+
+    // Validate referenced existing categories too, including archive state.
+    const referencedIds = [...new Set(toInsert.flatMap((row) => (row.categoryId ? [row.categoryId] : [])))];
+    if (referencedIds.length) {
+      const activeRows = await tx
+        .select({ id: categories.id, isArchived: categories.isArchived })
+        .from(categories)
+        .where(and(eq(categories.userId, user.id), sql`${categories.id} = any(${referencedIds})`));
+      const activeById = new Map(activeRows.map((row) => [row.id, row.isArchived]));
+      for (const id of referencedIds) {
+        if (!activeById.has(id)) throw badRequest("One or more imported categories are invalid.");
+        if (activeById.get(id)) throw badRequest("Archived categories cannot be assigned to imported transactions.");
+      }
+    }
 
     const inserted = await tx
       .insert(transactions)
