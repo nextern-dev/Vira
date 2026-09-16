@@ -17,7 +17,7 @@ const securityHeaders = [
       "base-uri 'self'",
       "form-action 'self'",
       "frame-ancestors 'self' https://arena.ai https://*.arena.ai",
-      "img-src 'self' data: blob:",
+      "img-src 'self' data: blob: https://*.googleusercontent.com",
       "style-src 'self' 'unsafe-inline'",
       "script-src 'self' 'unsafe-inline'",
       "connect-src 'self'",
