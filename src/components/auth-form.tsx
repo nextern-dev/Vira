@@ -83,7 +83,12 @@ export function AuthForm({
     setSubmitting(true);
 
     try {
-      await signIn("google", { callbackUrl: "/dashboard" });
+      // Always ask Google to show the account chooser, even when a Google
+      // account is already active in the browser.
+      await signIn("google", {
+        callbackUrl: "/dashboard",
+        prompt: "select_account",
+      });
     } catch {
       setSubmitting(false);
       setError("Unable to start Google sign-in. Please try again.");
