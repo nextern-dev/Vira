@@ -12,6 +12,7 @@ export type SessionUser = {
   id: string;
   email: string;
   name: string;
+  avatarUrl: string | null;
   currency: string;
   appearanceMode: "light" | "dark" | "system";
   colorTheme: "indigo" | "ocean" | "forest" | "graphite" | "berry";
@@ -47,7 +48,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token || token.length < 16 || token.length > 256) return null;
   try {
-    const rows = await db.select({ id: users.id, email: users.email, name: users.name, currency: users.currency, appearanceMode: users.appearanceMode, colorTheme: users.colorTheme }).from(sessions).innerJoin(users, eq(users.id, sessions.userId)).where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date()))).limit(1);
+    const rows = await db.select({ id: users.id, email: users.email, name: users.name, avatarUrl: users.avatarUrl, currency: users.currency, appearanceMode: users.appearanceMode, colorTheme: users.colorTheme }).from(sessions).innerJoin(users, eq(users.id, sessions.userId)).where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date()))).limit(1);
     return rows[0] ?? null;
   } catch {
     return null;
