@@ -97,7 +97,15 @@ const config: NextAuthConfig = {
         .where(eq(users.email, email))
         .limit(1);
 
-      if (user?.avatarUrl) session.user.image = user.avatarUrl;
+      if (user?.avatarUrl) {
+        session.user.image = user.avatarUrl;
+      } else if (session.user.image) {
+        await db
+          .update(users)
+          .set({ avatarUrl: session.user.image, updatedAt: new Date() })
+          .where(eq(users.email, email));
+      }
+
       return session;
     },
   },
