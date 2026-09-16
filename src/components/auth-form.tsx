@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { apiFetch } from "@/lib/client";
 import { SUPPORTED_CURRENCIES } from "@/lib/money";
 
@@ -76,14 +77,32 @@ export function AuthForm({
     });
   }
 
-    return (
+  async function handleGoogleSignIn() {
+    if (busy || !googleEnabled) return;
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      await signIn("google", { callbackUrl: "/dashboard" });
+    } catch {
+      setSubmitting(false);
+      setError("Unable to start Google sign-in. Please try again.");
+    }
+  }
+
+  return (
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
       <div>
         {googleEnabled ? (
-          <Link href="/api/auth/signin/google" className="btn-ghost w-full">
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            className="btn-ghost w-full"
+            disabled={busy}
+          >
             <GoogleIcon />
             Continue with Google
-          </Link>
+          </button>
         ) : (
           <span
             className="btn-ghost w-full cursor-not-allowed opacity-55"
