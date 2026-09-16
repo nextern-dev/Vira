@@ -23,7 +23,7 @@ export function AppShell({
   categories,
   children,
 }: {
-  user: { name: string; email: string };
+  user: { name: string; email: string; avatarUrl: string | null };
   categories: CategoryOption[];
   children: ReactNode;
 }) {
@@ -32,6 +32,7 @@ export function AppShell({
   const [navOpen, setNavOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   useEffect(() => {
     setNavOpen(false);
@@ -144,8 +145,20 @@ export function AppShell({
 
         <div className="mt-4 border-t border-[var(--color-sidebar-line)] pt-3">
           <div className="flex items-center gap-2.5 px-1.5 py-1">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-sidebar-active)] text-[12px] font-semibold text-[var(--color-sidebar-ink)]">
-              {initials}
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--color-sidebar-active)] text-[12px] font-semibold text-[var(--color-sidebar-ink)]">
+              {user.avatarUrl && !avatarFailed ? (
+                // Google profile images are served from Google-controlled hosts.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={user.avatarUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  referrerPolicy="no-referrer"
+                  onError={() => setAvatarFailed(true)}
+                />
+              ) : (
+                initials
+              )}
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-medium text-[var(--color-sidebar-ink)]">{user.name}</p>
