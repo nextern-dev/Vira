@@ -39,7 +39,19 @@ async function linkGoogleAccount(
         .returning({ id: users.id });
       userId = created.id;
     } else if (imageUrl) {
-      await db.update(users).set({ avatarUrl: imageUrl, updatedAt: new Date() }).where(eq(users.id, userId));
+      // Avatar persistence must never prevent an otherwise valid OAuth login.
+      // If the external profile image cannot be persisted, the custom session
+      // is still created and the existing avatar/fallback remains usable.
+      try {
+        await db
+          .update(users)
+          .set({ avatarUrl: imageUrl, updatedAt: new Date() })
+          .where(eq(users.id, userId));
+      } catch (error) {
+        log.error("oauth_avatar_persist_failed", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     await createSession(userId);
@@ -105,10 +117,16 @@ const config: NextAuthConfig = {
       if (user?.avatarUrl) {
         session.user.image = user.avatarUrl;
       } else if (session.user.image) {
-        await db
-          .update(users)
-          .set({ avatarUrl: session.user.image, updatedAt: new Date() })
-          .where(eq(users.email, email));
+        try {
+          await db
+            .update(users)
+            .set({ avatarUrl: session.user.image, updatedAt: new Date() })
+            .where(eq(users.email, email));
+        } catch (error) {
+          log.error("oauth_avatar_persist_failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
 
       return session;
