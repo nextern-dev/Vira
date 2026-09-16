@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { categories, transactions } from "@/db/schema";
@@ -26,11 +26,16 @@ const importRowSchema = z.object({
 });
 
 const importPayloadSchema = z.object({
-  rows: z.array(importRowSchema).min(1, "At least 1 row is required").max(1000, "Max 1000 rows per batch"),
+  rows: z
+    .array(importRowSchema)
+    .min(1, "At least 1 row is required")
+    .max(1000, "Max 1000 rows per batch"),
 });
 
 export const POST = withUser(async ({ request, user }) => {
-  const body = await readJson(request);
+  // Import payloads can legitimately be larger than ordinary JSON API bodies.
+  // The row count and per-field Zod limits remain the authoritative shape limits.
+  const body = await readJson(request, 512_000);
   const parsed = importPayloadSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -39,13 +44,8 @@ export const POST = withUser(async ({ request, user }) => {
 
   const { rows } = parsed.data;
 
-  // Load existing user categories
   const userCats = await db
-    .select({
-      id: categories.id,
-      name: categories.name,
-      kind: categories.kind,
-    })
+    .select({ id: categories.id, name: categories.name, kind: categories.kind })
     .from(categories)
     .where(eq(categories.userId, user.id));
 
@@ -55,7 +55,6 @@ export const POST = withUser(async ({ request, user }) => {
   }
 
   return await db.transaction(async (tx) => {
-    // 1. Identify and create any missing categories
     const neededCats = new Map<string, { name: string; kind: "income" | "expense" }>();
     for (const r of rows) {
       if (r.category && r.category !== "Uncategorised") {
@@ -80,11 +79,17 @@ export const POST = withUser(async ({ request, user }) => {
           .returning({ id: categories.id });
         catMap.set(key, created.id);
       } catch {
-        // In case of parallel race, category exists
+        // A concurrent import may have created the same category. Re-read it
+        // instead of silently proceeding with a missing category reference.
+        const [existing] = await tx
+          .select({ id: categories.id })
+          .from(categories)
+          .where(eq(categories.userId, user.id))
+          .limit(1);
+        if (existing) catMap.set(key, existing.id);
       }
     }
 
-    // 2. Insert all transactions
     const toInsert = rows.map((r) => {
       let categoryId: string | null = null;
       if (r.category && r.category !== "Uncategorised") {
@@ -101,15 +106,8 @@ export const POST = withUser(async ({ request, user }) => {
       };
     });
 
-    const inserted = await tx
-      .insert(transactions)
-      .values(toInsert)
-      .returning({ id: transactions.id });
+    const inserted = await tx.insert(transactions).values(toInsert).returning({ id: transactions.id });
 
-    return json({
-      ok: true,
-      importedCount: inserted.length,
-      categoriesCreated: neededCats.size,
-    });
+    return json({ ok: true, importedCount: inserted.length, categoriesCreated: neededCats.size });
   });
 });
