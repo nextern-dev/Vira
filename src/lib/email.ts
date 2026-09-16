@@ -79,7 +79,6 @@ async function issueToken(
   email: string,
   kind: "verify_email" | "reset_password",
 ): Promise<string> {
-  // Invalidate any still-live token of the same kind for this user.
   await db
     .update(verificationTokens)
     .set({ consumedAt: new Date() })
@@ -102,6 +101,11 @@ async function issueToken(
   return raw;
 }
 
+/**
+ * Atomically consumes a single-use token. The UPDATE is the concurrency
+ * boundary: only one concurrent request can transition consumed_at from NULL
+ * to a timestamp and receive the token payload through RETURNING.
+ */
 async function consumeToken(
   rawToken: string,
   kind: "verify_email" | "reset_password",
@@ -110,12 +114,8 @@ async function consumeToken(
   const hash = createHash("sha256").update(rawToken).digest("hex");
 
   const [row] = await db
-    .select({
-      id: verificationTokens.id,
-      userId: verificationTokens.userId,
-      email: verificationTokens.email,
-    })
-    .from(verificationTokens)
+    .update(verificationTokens)
+    .set({ consumedAt: new Date() })
     .where(
       and(
         eq(verificationTokens.tokenHash, hash),
@@ -124,14 +124,13 @@ async function consumeToken(
         gt(verificationTokens.expiresAt, new Date()),
       ),
     )
-    .limit(1);
+    .returning({
+      id: verificationTokens.id,
+      userId: verificationTokens.userId,
+      email: verificationTokens.email,
+    });
 
-  if (!row) return null;
-  await db
-    .update(verificationTokens)
-    .set({ consumedAt: new Date() })
-    .where(eq(verificationTokens.id, row.id));
-  return row;
+  return row ?? null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -184,7 +183,7 @@ export async function sendPasswordResetEmail(
     .from(users)
     .where(eq(users.email, email))
     .limit(1);
-  if (!user) return; // Never disclose whether the account exists.
+  if (!user) return;
 
   const raw = await issueToken(user.id, user.email, "reset_password");
   const url = `${appUrl(origin)}/reset-password?token=${raw}`;
