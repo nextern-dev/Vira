@@ -87,6 +87,19 @@ const config: NextAuthConfig = {
       );
       return ok ? "/dashboard" : "/login?error=oauth_link_failed";
     },
+    async session({ session }) {
+      const email = session.user?.email?.toLowerCase().trim();
+      if (!email) return session;
+
+      const [user] = await db
+        .select({ avatarUrl: users.avatarUrl })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+
+      if (user?.avatarUrl) session.user.image = user.avatarUrl;
+      return session;
+    },
   },
 };
 
