@@ -159,6 +159,30 @@ export async function listTransactions(
   };
 }
 
+/** Fetch all matching transactions for exports without a UI pagination cap. */
+export async function listTransactionsForExport(
+  userId: string,
+  filters: Omit<TransactionFilters, "page" | "pageSize">,
+): Promise<TransactionListItem[]> {
+  const where = buildWhere(userId, { ...filters, page: 1, pageSize: 1 });
+  return db
+    .select({
+      id: transactions.id,
+      type: transactions.type,
+      amountCents: transactions.amountCents,
+      occurredOn: transactions.occurredOn,
+      note: transactions.note,
+      categoryId: transactions.categoryId,
+      categoryName: categories.name,
+      categoryColor: categories.color,
+      categoryIcon: categories.icon,
+    })
+    .from(transactions)
+    .leftJoin(categories, eq(categories.id, transactions.categoryId))
+    .where(where)
+    .orderBy(...orderFor(filters.sort));
+}
+
 export async function getTransaction(
   userId: string,
   id: string,
@@ -187,7 +211,7 @@ export async function getTransaction(
 
 export type TransactionInput = {
   type: "income" | "expense";
-  amount: number; // cents
+  amount: number;
   occurredOn: string;
   categoryId: string | null;
   note: string | null;
@@ -196,7 +220,7 @@ export type TransactionInput = {
 
 const MAX_FUTURE_DAYS = 366;
 
-function assertReasonableDate(occurredOn: string): void {
+export function assertReasonableDate(occurredOn: string): void {
   const limit = new Date(Date.now() + MAX_FUTURE_DAYS * 86_400_000)
     .toISOString()
     .slice(0, 10);
@@ -237,7 +261,6 @@ export async function createTransaction(
     return getTransaction(userId, row.id);
   } catch (error) {
     if (isUniqueViolation(error)) {
-      // Same idempotency key -> return the original record instead of duplicating.
       if (input.clientRequestId) {
         const existing = await db
           .select({ id: transactions.id })
@@ -263,9 +286,13 @@ export async function updateTransaction(
   input: Omit<TransactionInput, "clientRequestId">,
 ): Promise<TransactionListItem> {
   assertReasonableDate(input.occurredOn);
-  await getTransaction(userId, id); // ownership check
+  await getTransaction(userId, id);
   if (input.categoryId) {
-    await assertCategoryOwned(userId, input.categoryId, input.type);
+    // Archived categories remain valid for editing existing historical records,
+    // but cannot be newly assigned to records.
+    await assertCategoryOwned(userId, input.categoryId, input.type, {
+      allowArchived: true,
+    });
   }
 
   const updated = await db
