@@ -48,6 +48,7 @@ export const users = pgTable(
     email: text("email").notNull(),
     passwordHash: text("password_hash"),
     name: text("name").notNull(),
+    avatarUrl: text("avatar_url"),
     currency: text("currency").notNull().default("USD"),
     provider: text("provider").notNull().default("credentials"),
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
