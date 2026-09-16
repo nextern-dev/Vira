@@ -11,11 +11,6 @@ export function googleConfigured(): boolean {
   return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 }
 
-/**
- * Links a Google identity to a Vira account, creating one when needed, then
- * issues the product's own opaque vira_session. Auth.js performs the OAuth
- * leg only — Vira sessions remain the single source of truth for authz.
- */
 async function linkGoogleAccount(
   email: string,
   displayName: string | null,
@@ -46,15 +41,23 @@ async function linkGoogleAccount(
     await createSession(userId);
     return true;
   } catch (error) {
-    log.error("oauth_link_failed", { message: error instanceof Error ? error.message : String(error) });
+    log.error("oauth_link_failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }
 
+const authSecret = process.env.AUTH_SECRET?.trim();
+if (process.env.NODE_ENV === "production" && !authSecret) {
+  throw new Error("AUTH_SECRET must be configured in production.");
+}
+
 const config: NextAuthConfig = {
-  // trustHost is required when serving behind a proxy (Arena preview / Vercel).
   trustHost: true,
-  secret: process.env.AUTH_SECRET ?? "dev-only-change-me-with-AUTH_SECRET",
+  // Never use a predictable production fallback. Development keeps a clearly
+  // non-production value so local setup remains convenient.
+  secret: authSecret ?? "dev-only-secret-change-me",
   session: { strategy: "jwt" },
   providers: [
     Google({
@@ -63,9 +66,16 @@ const config: NextAuthConfig = {
     }),
   ],
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, profile }) {
       const email = user.email?.toLowerCase().trim();
       if (!email) return "/login?error=oauth_no_email";
+
+      // Do not auto-link an OAuth identity merely because an email string is
+      // present. Google must explicitly attest that the email is verified.
+      const emailVerified =
+        profile && "email_verified" in profile ? profile.email_verified === true : false;
+      if (!emailVerified) return "/login?error=oauth_email_unverified";
+
       const ok = await linkGoogleAccount(email, user.name ?? null);
       return ok ? "/dashboard" : "/login?error=oauth_link_failed";
     },
