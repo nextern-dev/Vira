@@ -8,16 +8,13 @@ if (!databaseUrl) {
 }
 
 const globalForDb = globalThis as typeof globalThis & {
-  __arenaNextJsPostgresqlPool?: Pool;
+  __viraPostgresqlPool?: Pool;
 };
 
 /**
- * TLS handling for production managed databases.
- *
- * node-postgres already honours `sslmode` inside DATABASE_URL. For providers
- * such as Neon/RDS that require TLS without a local CA bundle, append
- * `sslmode=require` to the URL; set `DB_SSL_REJECT_UNAUTHORIZED=false` when
- * the provider uses a certificate chain not trusted by the base image.
+ * Reuse the PostgreSQL pool across warm serverless invocations.
+ * Creating a new Pool for every Vercel function invocation causes connection
+ * churn and adds avoidable database latency, especially on Neon.
  */
 const ssl = databaseUrl.includes("sslmode=require")
   ? {
@@ -26,17 +23,15 @@ const ssl = databaseUrl.includes("sslmode=require")
   : undefined;
 
 export const pool =
-  globalForDb.__arenaNextJsPostgresqlPool ??
+  globalForDb.__viraPostgresqlPool ??
   new Pool({
     connectionString: databaseUrl,
     ssl,
-    max: 10,
+    max: 5,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
   });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForDb.__arenaNextJsPostgresqlPool = pool;
-}
+globalForDb.__viraPostgresqlPool = pool;
 
 export const db = drizzle(pool);
