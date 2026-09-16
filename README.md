@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="./public/brand/vira-logo.svg" width="180" alt="Vira" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/nextern-dev/Vira/main/public/brand/vira-logo-light.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/nextern-dev/Vira/main/public/brand/vira-logo.svg" />
+    <img src="https://raw.githubusercontent.com/nextern-dev/Vira/main/public/brand/vira-logo.svg" width="190" alt="Vira" />
+  </picture>
 </p>
 
 <p align="center">
@@ -19,10 +23,6 @@
 </p>
 
 <p align="center">
-  <img src="./public/brand/vira-cover.png" width="900" alt="Vira — Personal Expense Tracker" />
-</p>
-
-<p align="center">
   <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript" alt="TypeScript strict" />
@@ -32,30 +32,26 @@
 
 # Vira
 
-Vira is a full-stack personal expense tracker created by **Nextern**. It is designed as a compact, real-world application rather than a basic CRUD demo, with an emphasis on authentication, authorization, data integrity, secure money handling, validation, and production deployment.
+Vira is a full-stack personal expense tracker created by **Nextern**. The project keeps the product scope focused while treating authentication, authorization, data integrity, secure money handling, validation, and deployment as real production concerns.
 
 ## Overview
 
-Vira brings everyday expense tracking into one focused application:
+Vira provides a focused workflow for managing everyday personal finances:
 
 - Track income and expenses.
-- Organize records with personal categories.
-- Create budgets and monitor spending.
-- Review spending summaries, category breakdowns, and six-month trends.
+- Organize transactions with personal categories.
+- Create budgets and monitor spending progress.
+- Review summaries, category breakdowns, and six-month trends.
 - Import and export transactions through CSV.
 - Sign in with email/password or Google.
-- Verify email addresses and securely reset passwords.
+- Verify email addresses and reset passwords securely.
 - Keep application data isolated per user.
-
-The project deliberately keeps the product scope small while treating the underlying engineering as production code.
 
 ## Engineering Highlights
 
-The interesting part of Vira is not the expense-tracking domain itself, but how the application handles common production concerns.
-
 | Concern | Approach |
 | --- | --- |
-| Authentication | Auth.js v5 for Google OAuth, combined with a Vira-owned opaque application session |
+| Authentication | Auth.js v5 for Google OAuth with a Vira-owned opaque application session |
 | Authorization | Protected data access is scoped to the authenticated `user_id` |
 | Password security | `scrypt` hashing with per-password salts and timing-safe comparison |
 | OAuth security | Google accounts require a verified email assertion before linking |
@@ -94,7 +90,7 @@ The interesting part of Vira is not the expense-tracking domain itself, but how 
 
 ### Data Management
 
-- CSV export based on the active ledger filters
+- CSV export based on active ledger filters
 - CSV import with header detection and preview
 - Validation before persistence
 - Atomic bulk insertion for valid imports
@@ -277,14 +273,15 @@ npm run build
 
 ## Brand Assets
 
-Brand files are maintained in `public/brand/`:
+The repository keeps the brand assets intentionally small and GitHub-friendly:
 
 | Asset | Path |
 | --- | --- |
 | Brand mark | `public/brand/vira-mark.svg` |
 | Primary logo | `public/brand/vira-logo.svg` |
-| Light logo | `public/brand/vira-logo-light.svg` |
-| Cover | `public/brand/vira-cover.png` |
+| Dark-background logo | `public/brand/vira-logo-light.svg` |
+
+The README hero automatically switches between the primary and light logo based on the viewer's color scheme, avoiding the previous contrast issue.
 
 ## Open Source
 
