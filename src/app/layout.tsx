@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { Analytics } from "@vercel/analytics/next";
+import { ViraAnalytics } from "@/components/analytics";
 import { readAppearanceCookie } from "@/lib/auth/appearance-cookie";
 import { getCurrentUser } from "@/lib/auth/session";
 import "./globals.css";
@@ -90,7 +90,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body className="min-h-screen antialiased">
         {children}
-        <Analytics />
+        <ViraAnalytics />
       </body>
     </html>
   );
