@@ -67,8 +67,10 @@ export const POST = withUser(async ({ request, user }) => {
     let categoriesCreated = 0;
     for (const [key, meta] of neededCats.entries()) {
       // The database has a case-insensitive unique constraint on
-      // (user_id, kind, name). ON CONFLICT makes concurrent imports safe
-      // without relying on a catch/re-query after a failed PostgreSQL statement.
+      // (user_id, kind, name). Drizzle's typed target option accepts column
+      // objects only, not the lower(name) SQL expression used by this index.
+      // Calling onConflictDoNothing() without a target delegates conflict
+      // detection to PostgreSQL and safely handles concurrent imports.
       const [created] = await tx
         .insert(categories)
         .values({
@@ -78,9 +80,7 @@ export const POST = withUser(async ({ request, user }) => {
           color: DEFAULT_CATEGORY_COLOR,
           icon: DEFAULT_CATEGORY_ICON,
         })
-        .onConflictDoNothing({
-          target: [categories.userId, categories.kind, sql`lower(${categories.name})`],
-        })
+        .onConflictDoNothing()
         .returning({ id: categories.id });
 
       if (created) categoriesCreated += 1;
