@@ -65,6 +65,7 @@ export async function assertCategoryOwned(
   userId: string,
   categoryId: string,
   expectedKind?: "income" | "expense",
+  options?: { allowArchived?: boolean },
 ): Promise<Category> {
   const rows = await db
     .select({
@@ -85,6 +86,9 @@ export async function assertCategoryOwned(
     throw conflict(
       `"${category.name}" is a ${category.kind} category and cannot be used for a ${expectedKind}.`,
     );
+  }
+  if (category.isArchived && !options?.allowArchived) {
+    throw conflict(`"${category.name}" is archived and cannot be used for new records.`);
   }
   return category;
 }
@@ -119,9 +123,9 @@ export async function updateCategory(
   categoryId: string,
   patch: { name?: string; color?: string; icon?: string; isArchived?: boolean },
 ): Promise<Category> {
-  await assertCategoryOwned(userId, categoryId);
+  await assertCategoryOwned(userId, categoryId, undefined, { allowArchived: true });
   if (Object.keys(patch).length === 0) {
-    return assertCategoryOwned(userId, categoryId);
+    return assertCategoryOwned(userId, categoryId, undefined, { allowArchived: true });
   }
   try {
     const [row] = await db
@@ -148,14 +152,17 @@ export async function updateCategory(
 
 /**
  * Deleting a category never deletes money. Transactions are either moved to
- * another owned category or left uncategorised (FK ON DELETE SET NULL).
+ * another owned category or left uncategorised. Budgets are preserved too:
+ * their optional category scope is cleared by the FK ON DELETE SET NULL.
  */
 export async function deleteCategory(
   userId: string,
   categoryId: string,
   reassignToId: string | null,
 ): Promise<{ movedTransactions: number }> {
-  const category = await assertCategoryOwned(userId, categoryId);
+  const category = await assertCategoryOwned(userId, categoryId, undefined, {
+    allowArchived: true,
+  });
 
   if (reassignToId) {
     if (reassignToId === categoryId) {
