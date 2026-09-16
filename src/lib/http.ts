@@ -50,29 +50,54 @@ function errorResponse(error: unknown): Response {
 }
 
 /**
- * Cross-origin guard for state changing requests. Combined with the
- * SameSite=Lax session cookie this blocks classic CSRF.
+ * Cross-origin guard for state-changing requests.
+ *
+ * Browser requests normally include Origin for mutating fetches. When Origin
+ * is absent, fall back to Referer and require it to point at the current host.
+ * This prevents an attacker from bypassing the guard simply by omitting the
+ * Origin header. Trusted embedded previews can explicitly opt into their
+ * documented cross-site behavior through the existing session configuration.
  */
 async function assertSameOrigin(request: Request): Promise<void> {
   const method = request.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return;
 
   const headerList = await headers();
-  const origin = headerList.get("origin");
-  if (!origin) return; // same-origin fetches from some clients omit Origin
-
   const host = headerList.get("x-forwarded-host") ?? headerList.get("host");
   if (!host) throw forbidden();
 
-  let originHost: string;
-  try {
-    originHost = new URL(origin).host;
-  } catch {
-    throw forbidden();
+  const origin = headerList.get("origin");
+  const referer = headerList.get("referer");
+
+  if (origin) {
+    let originHost: string;
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      throw forbidden();
+    }
+    if (originHost !== host) {
+      throw new ApiError(403, "Cross-origin request rejected.", "bad_origin");
+    }
+    return;
   }
-  if (originHost !== host) {
-    throw new ApiError(403, "Cross-origin request rejected.", "bad_origin");
+
+  if (referer) {
+    let refererHost: string;
+    try {
+      refererHost = new URL(referer).host;
+    } catch {
+      throw forbidden();
+    }
+    if (refererHost !== host) {
+      throw new ApiError(403, "Cross-origin request rejected.", "bad_referer");
+    }
+    return;
   }
+
+  // No trustworthy browser-origin signal. Reject rather than silently
+  // accepting a state-changing request with ambient authentication cookies.
+  throw new ApiError(403, "Request origin could not be verified.", "origin_required");
 }
 
 export type RouteParams = Record<string, string | string[] | undefined>;
@@ -87,11 +112,6 @@ type Handler = (ctx: {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/**
- * Resolves a dynamic path segment and rejects anything that is not a UUID.
- * A bad id is a 404 — never an unhandled database cast error, and never an
- * oracle that tells an attacker whether the row exists.
- */
 export async function pathId(
   params: Promise<RouteParams>,
   key = "id",
@@ -103,7 +123,6 @@ export async function pathId(
   return value;
 }
 
-/** Wraps a route handler with auth, CSRF protection and error normalisation. */
 export function withUser(handler: Handler) {
   return async (request: Request, context: RouteContext): Promise<Response> => {
     try {
@@ -132,10 +151,13 @@ export function withPublic(handler: (request: Request) => Promise<Response>) {
   };
 }
 
-/** Parses a JSON body defensively (size + shape). */
-export async function readJson(request: Request): Promise<Record<string, unknown>> {
+/** Parses a normal JSON API body defensively. */
+export async function readJson(
+  request: Request,
+  maxBytes = 20_000,
+): Promise<Record<string, unknown>> {
   const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
+  if (!contentType.toLowerCase().includes("application/json")) {
     throw badRequest("Expected a JSON request body.");
   }
   let text: string;
@@ -144,7 +166,7 @@ export async function readJson(request: Request): Promise<Record<string, unknown
   } catch {
     throw badRequest("Could not read the request body.");
   }
-  if (text.length > 20_000) throw badRequest("Request body is too large.");
+  if (text.length > maxBytes) throw badRequest("Request body is too large.");
   if (!text.trim()) return {};
   try {
     const parsed: unknown = JSON.parse(text);
@@ -158,20 +180,7 @@ export async function readJson(request: Request): Promise<Record<string, unknown
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Rate limiting                                                       */
-/* ------------------------------------------------------------------ */
-
-/**
- * Counts requests for `key` and rejects when the window limit is exceeded.
- * Uses the shared Redis window when configured (multi-instance safe) and the
- * in-process window otherwise. See src/lib/rate-limit.ts.
- */
-export async function rateLimit(
-  key: string,
-  limit: number,
-  windowMs: number,
-): Promise<void> {
+export async function rateLimit(key: string, limit: number, windowMs: number): Promise<void> {
   const count = await rateWindowCount(key, windowMs);
   if (count > limit) {
     const seconds = Math.ceil(windowMs / 1000);
