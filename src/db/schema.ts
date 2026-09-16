@@ -46,7 +46,6 @@ export const users = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     email: text("email").notNull(),
-    // Null for OAuth-only accounts (e.g. Google) that never set a password.
     passwordHash: text("password_hash"),
     name: text("name").notNull(),
     currency: text("currency").notNull().default("USD"),
@@ -141,7 +140,6 @@ export const categories = pgTable(
       .defaultNow(),
   },
   (table) => [
-    // A user cannot own two categories with the same name for the same kind.
     uniqueIndex("categories_user_kind_name_unique_idx").on(
       table.userId,
       table.kind,
@@ -162,16 +160,13 @@ export const transactions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    // Deleting a category must never orphan/destroy a transaction.
     categoryId: uuid("category_id").references(() => categories.id, {
       onDelete: "set null",
     }),
     type: transactionTypeEnum("type").notNull(),
-    // Money is stored as an exact integer number of minor units (cents).
     amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
     occurredOn: date("occurred_on", { mode: "string" }).notNull(),
     note: text("note"),
-    // Client supplied idempotency key -> blocks duplicate submissions.
     clientRequestId: text("client_request_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -196,7 +191,6 @@ export const transactions = pgTable(
       table.categoryId,
       table.occurredOn.desc(),
     ),
-    // NULLs are distinct in Postgres, so this only constrains real keys.
     uniqueIndex("transactions_user_request_unique_idx").on(
       table.userId,
       table.clientRequestId,
@@ -215,9 +209,10 @@ export const budgets = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    // null category => budget covers every expense.
+    // A category is optional; deleting a category must preserve the budget
+    // and turn it into an overall budget rather than deleting money-planning data.
     categoryId: uuid("category_id").references(() => categories.id, {
-      onDelete: "cascade",
+      onDelete: "set null",
     }),
     name: text("name").notNull(),
     limitCents: bigint("limit_cents", { mode: "number" }).notNull(),
