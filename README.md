@@ -8,57 +8,128 @@
 
 # Vira — Personal Expense Tracker
 
-**Created by Nextern.** Free & open-source (MIT) — built as a production-grade portfolio piece. Feel free to fork, run, and adapt it; attribution appreciated.
+**Created by Nextern.** Vira is a free, open-source, production-oriented full-stack expense tracker built to demonstrate practical application engineering: authentication, authorization, PostgreSQL data modeling, secure money handling, validation, transactional workflows, and production deployment.
 
-A full-stack personal finance application built with **Next.js (App Router)**, **PostgreSQL** and **Drizzle ORM**. Vira lets authenticated users track income and expenses, organise them into custom categories, set budgets with real-time progress, and analyse spending through server-computed summaries, CSV tools and interactive command palettes.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-336791?logo=postgresql)](https://www.postgresql.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 
-## Feature overview
+## Why Vira?
 
-- **Power Tools** — Global **Command Palette (`⌘K` / `Ctrl+K`)** for instant keyboard navigation, action triggering (`N` for new record), and live theme palette switching.
-- **CSV Import & Export** — 1-click live CSV export respecting active ledger filters, plus bulk CSV upload with automated header detection, preview table, and atomic database insertion.
-- **Sign-in & OAuth** — Email + password, or **Google** via Auth.js broker. All OAuth flows issue and bridge into Vira's native opaque `vira_session` cookie.
-- **Email Delivery (Resend)** — 24h email verification and 60min single-use password-reset tokens (hashed with SHA-256, single-use, all-sessions-invalidating).
-- **Data Isolation & Security** — Strict per-account data scoping on every SQL query (`WHERE user_id = <session.userId>`), CSRF Origin verification, and rate limiting with optional Upstash Redis backend.
-- **Transactions & Money Math** — Amounts stored strictly as whole minor units (`bigint` cents). Automated localization normalization for Persian and Arabic numerals.
-- **Categories & Integrity** — User-defined categories with SVG icons and curated palettes. Deleting a category never destroys historical transactions (`ON DELETE SET NULL`).
-- **Budgets & Analytics** — Real-time ledger recalculations, progress tracking, 6-month trends, and spending breakdowns aggregated purely on PostgreSQL.
-- **Appearance System** — 5 curated palettes (Iris, Tide, Evergreen, Slate, Mulberry) across true Dark and Light modes, stored in database, synced across open browser tabs via `BroadcastChannel`.
+Vira is intentionally more than a CRUD demo. The project focuses on the engineering details that matter when a small web application moves from a prototype toward production:
+
+- authenticated, user-scoped data access
+- real database constraints and transaction-safe workflows
+- integer-based monetary calculations instead of floating-point money
+- secure password and token handling
+- Google OAuth bridged into an application-owned session
+- server-side input validation and authorization
+- protection against CSRF, duplicate writes, and CSV formula injection
+- automated checks through CI and a production health endpoint
+
+## Live Demo
+
+**Production:** https://vira.nextern.ir
+
+**Repository:** https://github.com/nextern-dev/Vira
+
+Vira is designed to be easy to run locally while keeping production concerns explicit in the codebase.
+
+## Features
+
+### Personal finance
+
+- Record income and expenses.
+- Organize transactions with user-owned categories.
+- Set active budgets and track progress against spending.
+- Review spending summaries, category breakdowns, and six-month trends.
+- Store amounts as integer minor units for deterministic money calculations.
+
+### Authentication
+
+- Email/password authentication.
+- Google OAuth through Auth.js.
+- Google email-verification checks before account linking.
+- OAuth users are bridged into Vira's own opaque `vira_session` cookie.
+- Persistent Google profile avatar storage.
+- Email verification with expiring tokens.
+- Password reset with short-lived, single-use tokens.
+- Password reset invalidates existing application sessions.
+
+### Data tools
+
+- CSV export based on the active ledger filters.
+- CSV import with header detection and preview.
+- Import validation before persistence.
+- Atomic bulk insertion for valid imports.
+- Transaction idempotency through a unique client request identifier.
+
+### Application behavior
+
+- Global command palette with keyboard shortcuts.
+- Keyboard action for creating a new record.
+- Five stored appearance palettes with light/dark modes.
+- Appearance synchronization between open browser tabs.
+- Responsive application shell for desktop and mobile use.
+
+## Security & Engineering
+
+Security is treated as application behavior rather than a UI feature.
+
+| Area | Implementation |
+| --- | --- |
+| Authentication | Auth.js v5 for Google OAuth + Vira's opaque application session |
+| Authorization | Every protected data query is scoped to the authenticated `user_id` |
+| Passwords | `scrypt` hashing with per-password salt and timing-safe comparison |
+| OAuth | Requires Google's `email_verified` assertion before linking |
+| Sessions | SHA-256 token hashes stored server-side; opaque session cookie is `httpOnly` |
+| CSRF | Strict Origin/Host verification for state-changing requests |
+| Input validation | Server-side Zod schemas with bounded payloads and rejected invalid fields |
+| Money | Integer minor units stored as PostgreSQL `bigint`; no floating-point money math |
+| Idempotency | Unique `(user_id, client_request_id)` transaction constraint prevents duplicate writes |
+| Categories | User-scoped unique names and protected archived-category rules |
+| Imports | Row limits, date validation, category ownership checks, and CSV formula-injection protection |
+| Rate limiting | Optional shared Upstash Redis limiter with an in-process fallback |
+| Database integrity | Foreign keys, unique constraints, indexes, atomic operations, and transaction boundaries |
+| HTTP hardening | CSP, `nosniff`, strict referrer policy, permissions policy, and frame-ancestor restrictions |
+| Observability | Structured server logs and `/api/health` readiness endpoint |
 
 ## Architecture
 
 ```mermaid
 graph TD
-  User([User / Browser])
-  NextRouter[Next.js App Router]
-  CSRF[CSRF Origin Guard & Rate Limiter]
-  AuthLayer[Auth Session Middleware]
-  QueryLayer[Scoped SQL Data Layer]
-  Postgres[(PostgreSQL / Neon DB)]
-  OAuth[Google OAuth via Auth.js]
-  Mail[Resend Mail Service]
+  Browser[Browser]
+  App[Next.js App Router]
+  Guards[Validation + CSRF + Rate Limits]
+  Auth[Auth.js + Vira Session]
+  Domain[Server Domain Logic]
+  DB[(PostgreSQL / Neon)]
+  Google[Google OAuth]
+  Mail[Resend]
 
-  User -->|HTTPS Request| NextRouter
-  NextRouter --> CSRF
-  CSRF --> AuthLayer
-  AuthLayer -->|Validate vira_session| Postgres
-  AuthLayer --> QueryLayer
-  QueryLayer -->|Scoped WHERE user_id| Postgres
-
-  AuthLayer -.->|Optional OAuth| OAuth
-  QueryLayer -.->|Transactional Mail| Mail
+  Browser --> App
+  App --> Guards
+  Guards --> Auth
+  Auth --> Domain
+  Domain --> DB
+  Auth -.-> Google
+  Domain -.-> Mail
 ```
 
-## Database Schema (ERD)
+The application separates authentication from the application session: Auth.js handles the OAuth exchange, while protected application requests use Vira's server-side opaque session. Domain operations then enforce user ownership before reading or mutating database records.
+
+## Data Model
 
 ```mermaid
 erDiagram
-  users ||--o{ sessions : "has"
-  users ||--o{ categories : "owns"
-  users ||--o{ transactions : "records"
-  users ||--o{ budgets : "defines"
-  users ||--o{ verification_tokens : "receives"
-  categories ||--o{ transactions : "classifies"
-  categories ||--o{ budgets : "scopes"
+  users ||--o{ sessions : has
+  users ||--o{ categories : owns
+  users ||--o{ transactions : records
+  users ||--o{ budgets : defines
+  users ||--o{ verification_tokens : receives
+  categories ||--o{ transactions : classifies
+  categories ||--o{ budgets : scopes
 
   users {
     uuid id PK
@@ -67,6 +138,7 @@ erDiagram
     text name
     text currency
     text provider
+    text avatar_url
     timestamp email_verified_at
     appearance_mode appearance_mode
     color_theme color_theme
@@ -77,10 +149,10 @@ erDiagram
     uuid user_id FK
     uuid category_id FK
     transaction_type type
-    bigint amount_cents
+    bigint amount_minor
     date occurred_on
     text note
-    text client_request_id UK
+    text client_request_id
   }
 
   budgets {
@@ -88,7 +160,7 @@ erDiagram
     uuid user_id FK
     uuid category_id FK
     text name
-    bigint limit_cents
+    bigint limit_minor
     budget_period period
     date starts_on
     date ends_on
@@ -105,75 +177,121 @@ erDiagram
   }
 ```
 
-## Engineering guarantees
+## Tech Stack
 
-| Concern | Implementation |
-| --- | --- |
-| Money | Stored as **integer minor units (cents)** in `bigint` — never floats |
-| AuthZ | Every query is `WHERE user_id = <session user>`; IDs in URLs are validated UUIDs and return 404, never data |
-| Input | All payloads validated server-side with Zod; unknown fields are dropped (no mass assignment) |
-| CSRF | Every mutating request passes a strict **Origin == Host** check; session cookies are `httpOnly` |
-| Rate limiting | Shared Redis window when `UPSTASH_*` is configured (multi-instance), in-process fallback |
-| Idempotency | Unique `(user_id, client_request_id)` constraint on transactions; conflict → returns the original record |
-| Integrity | FK cascades: user deletion removes sessions/categories/transactions/budgets; category deletion unassigns transactions |
-| Indexes | User/date, user/type/date, user/category/date, unique email, token hash, idempotency key |
-| Headers | CSP, `nosniff`, strict referrer policy, permissions policy, `frame-ancestors` allow-list |
-| Passwords | `scrypt` (N=16384), timing-safe comparison, decoy-hash to equalise login latency |
-| Observability | Structured JSON server logs (`src/lib/log.ts`), `/api/health` readiness endpoint |
-| CI | GitHub Actions: PostgreSQL service, schema push, typegen, typecheck, lint, automated unit tests, build & health probe |
+- **Next.js 16** — App Router, Server Components, Route Handlers, Turbopack
+- **React 19**
+- **TypeScript** — strict mode
+- **PostgreSQL** — relational persistence and database constraints
+- **Drizzle ORM** — typed SQL access and schema management
+- **Auth.js v5** — Google OAuth integration
+- **Resend** — transactional authentication email
+- **Zod** — server-side input validation
+- **Tailwind CSS v4** — application styling
+- **Vercel + Neon** — production hosting and PostgreSQL
 
-## Brand assets
+## Project Structure
 
-All visual identity files live inside the app under `public/brand/` and are served directly by Next.js:
+```text
+src/
+├── app/                 # App Router pages and Route Handlers
+├── components/          # Reusable application components
+├── db/                  # Drizzle schema and database access
+├── lib/
+│   ├── auth/            # Application session and auth helpers
+│   ├── validation/      # Shared validation logic
+│   └── ...
+└── auth.ts              # Auth.js configuration and OAuth bridge
 
-| Asset | Repository path | Public URL | Use |
-| --- | --- | --- | --- |
-| Brand mark | `public/brand/vira-mark.svg` | `/brand/vira-mark.svg` | App navbar, manifest, compact placements |
-| Primary logo | `public/brand/vira-logo.svg` | `/brand/vira-logo.svg` | Light backgrounds and GitHub documentation |
-| Light logo | `public/brand/vira-logo-light.svg` | `/brand/vira-logo-light.svg` | Dark backgrounds |
-| Cover / social card | `public/brand/vira-cover.png` | `/brand/vira-cover.png` | GitHub cover, Open Graph and Twitter cards (1200×630) |
+drizzle/                 # SQL migrations and migration metadata
+scripts/                 # Unit tests and project utilities
+public/brand/             # Vira brand assets
+```
 
-## Stack
+## Local Development
 
-- **Next.js 16** (App Router, Turbopack, Server Components + Route Handlers)
-- **React 19**, **TypeScript** (strict mode)
-- **PostgreSQL** with **Drizzle ORM**
-- **Tailwind CSS v4** + custom semantic token theming
-- **Auth.js v5** for Google OAuth bridging
-- **Resend** for transactional authentication emails
-- **Zod** for schema validation
+### Requirements
 
-## Running locally
+- Node.js 22+
+- PostgreSQL 16+ (or a compatible hosted PostgreSQL database)
+- npm
+
+### Setup
 
 ```bash
-# 1. Install dependencies
+# Clone
+ git clone https://github.com/nextern-dev/Vira.git
+ cd Vira
+
+# Install dependencies
 npm install
 
-# 2. Configure environment
+# Configure environment
 cp .env.example .env
 
-# 3. Apply the database schema
+# Apply the database schema
 npx drizzle-kit push --force
 
-# 4. Run automated unit tests
+# Run unit tests
 node --experimental-strip-types --test scripts/test-units.mjs
 
-# 5. Start development server
+# Start development server
 npm run dev
 ```
 
-## Environment
+Then open `http://localhost:3000`.
 
-| Variable | Required | Notes |
+## Environment Variables
+
+| Variable | Required | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | PostgreSQL connection string. For Neon: append `sslmode=require`. |
-| `DB_SSL_REJECT_UNAUTHORIZED` | no | `false` only when the provider's chain is not trusted by the image (default strict). |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | no | Enables **Continue with Google** (Auth.js), bridge to `vira_session`. |
-| `AUTH_SECRET` | no | JWT secret for the Auth.js OAuth leg (32+ bytes, `openssl rand -base64 32`). |
-| `AUTH_TRUST_HOST` | no | Set `"true"` when served behind a proxy (Vercel, Arena preview, etc.). |
-| `RESEND_API_KEY` / `EMAIL_FROM` | no | Enables real email delivery (verify + reset). Without it, dev logs a structured outbox. |
-| `APP_URL` | no | Canonical URL used in email links (defaults to localhost in dev). |
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | no | Shared rate limiting (multi-instance safe). |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `DB_SSL_REJECT_UNAUTHORIZED` | No | Optional SSL certificate override for specific providers |
+| `GOOGLE_CLIENT_ID` | No | Enables Google sign-in |
+| `GOOGLE_CLIENT_SECRET` | No | Enables Google sign-in |
+| `AUTH_SECRET` | Production | Auth.js secret for the OAuth leg |
+| `AUTH_TRUST_HOST` | No | Trust host information when deployed behind a proxy |
+| `RESEND_API_KEY` | No | Enables real transactional email delivery |
+| `EMAIL_FROM` | No | Sender address for authentication emails |
+| `APP_URL` | No | Canonical URL used in generated email links |
+| `UPSTASH_REDIS_REST_URL` | No | Shared rate-limiter endpoint |
+| `UPSTASH_REDIS_REST_TOKEN` | No | Shared rate-limiter credential |
+
+Never commit real credentials or production secrets to the repository.
+
+## Testing & CI
+
+The repository includes automated checks covering core money, date, password, and application behavior. GitHub Actions runs the project against PostgreSQL and verifies the production build path with schema setup, type checking, linting, tests, build, server startup, and a health probe.
+
+For a quick local check:
+
+```bash
+npm run typecheck
+npm run lint
+node --experimental-strip-types --test scripts/test-units.mjs
+npm run build
+```
+
+## Brand Assets
+
+Brand files are maintained in `public/brand/`:
+
+| Asset | Path | Purpose |
+| --- | --- | --- |
+| Brand mark | `public/brand/vira-mark.svg` | Compact application placements |
+| Primary logo | `public/brand/vira-logo.svg` | Documentation and light backgrounds |
+| Light logo | `public/brand/vira-logo-light.svg` | Dark backgrounds |
+| Cover | `public/brand/vira-cover.png` | Repository/social preview |
+
+## Open Source
+
+Vira is released under the **MIT License**. You are free to use, modify, fork, and adapt the project under the terms of the license.
+
+If you build on Vira, attribution is appreciated.
+
+## About Nextern
+
+Vira is an independent open-source project by **Nextern**, a digital product and software brand focused on practical, professionally engineered web applications and developer products.
 
 ## License
 
