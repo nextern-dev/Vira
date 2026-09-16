@@ -40,7 +40,11 @@ export function AppShell({
   async function signOut() {
     if (signingOut) return;
     setSigningOut(true);
-    await apiFetch("/api/auth/logout", { method: "POST", body: "{}" });
+    const result = await apiFetch("/api/auth/logout", { method: "POST", body: "{}" });
+    if (!result.ok) {
+      setSigningOut(false);
+      return;
+    }
     router.replace("/login");
     router.refresh();
   }
