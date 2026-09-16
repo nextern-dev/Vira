@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://vira.nextern.ir">Live Demo</a>
+  <a href="https://vira-nextern.vercel.app">Live Demo</a>
   &nbsp;·&nbsp;
   <a href="https://github.com/nextern-dev/Vira">Repository</a>
   &nbsp;·&nbsp;
