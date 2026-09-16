@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { categories, transactions } from "@/db/schema";
@@ -103,15 +103,6 @@ export const POST = withUser(async ({ request, user }) => {
       catMap.set(key, resolved.id);
     }
 
-    // Existing archived categories may appear in an imported file. Reject them
-    // instead of silently reusing an archived category for newly created data.
-    for (const [key, categoryId] of catMap) {
-      if (!neededCats.has(key)) continue;
-      // Newly created categories are necessarily active; this loop primarily
-      // documents that category resolution must never bypass archive rules.
-      void categoryId;
-    }
-
     const toInsert = rows.map((r) => {
       let categoryId: string | null = null;
       if (r.category && r.category !== "Uncategorised") {
@@ -128,17 +119,19 @@ export const POST = withUser(async ({ request, user }) => {
       };
     });
 
-    // Validate referenced existing categories too, including archive state.
+    // Existing archived categories must not be reused for newly imported rows.
     const referencedIds = [...new Set(toInsert.flatMap((row) => (row.categoryId ? [row.categoryId] : [])))];
     if (referencedIds.length) {
-      const activeRows = await tx
+      const referencedRows = await tx
         .select({ id: categories.id, isArchived: categories.isArchived })
         .from(categories)
-        .where(and(eq(categories.userId, user.id), sql`${categories.id} = any(${referencedIds})`));
-      const activeById = new Map(activeRows.map((row) => [row.id, row.isArchived]));
+        .where(and(eq(categories.userId, user.id), inArray(categories.id, referencedIds)));
+      const archivedById = new Map(referencedRows.map((row) => [row.id, row.isArchived]));
       for (const id of referencedIds) {
-        if (!activeById.has(id)) throw badRequest("One or more imported categories are invalid.");
-        if (activeById.get(id)) throw badRequest("Archived categories cannot be assigned to imported transactions.");
+        if (!archivedById.has(id)) throw badRequest("One or more imported categories are invalid.");
+        if (archivedById.get(id)) {
+          throw badRequest("Archived categories cannot be assigned to imported transactions.");
+        }
       }
     }
 
