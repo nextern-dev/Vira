@@ -16,16 +16,19 @@ const globalForDb = globalThis as typeof globalThis & {
  * Creating a new Pool for every Vercel function invocation causes connection
  * churn and adds avoidable database latency, especially on Neon.
  */
-const ssl = databaseUrl.includes("sslmode=require")
-  ? {
-      rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== "false",
-    }
+const normalizedDatabaseUrl = databaseUrl.replace(
+  /([?&])sslmode=(?:prefer|require|verify-ca)(?=(&|$))/i,
+  "$1sslmode=verify-full",
+);
+
+const ssl = normalizedDatabaseUrl.includes("sslmode=verify-full")
+  ? { rejectUnauthorized: true }
   : undefined;
 
 export const pool =
   globalForDb.__viraPostgresqlPool ??
   new Pool({
-    connectionString: databaseUrl,
+    connectionString: normalizedDatabaseUrl,
     ssl,
     max: 5,
     idleTimeoutMillis: 30_000,
