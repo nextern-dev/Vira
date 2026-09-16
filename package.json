@@ -1,6 +1,9 @@
 {
-  "name": "nextjs-postgresql-template",
-  "private": true,
+  "name": "vira",
+  "version": "1.0.0",
+  "description": "Open-source personal expense tracker built with Next.js and PostgreSQL.",
+  "private": false,
+  "license": "MIT",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
