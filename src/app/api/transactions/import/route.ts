@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { categories, transactions } from "@/db/schema";
@@ -43,7 +43,6 @@ export const POST = withUser(async ({ request, user }) => {
   }
 
   const { rows } = parsed.data;
-
   const userCats = await db
     .select({ id: categories.id, name: categories.name, kind: categories.kind })
     .from(categories)
@@ -65,29 +64,41 @@ export const POST = withUser(async ({ request, user }) => {
       }
     }
 
+    let categoriesCreated = 0;
     for (const [key, meta] of neededCats.entries()) {
-      try {
-        const [created] = await tx
-          .insert(categories)
-          .values({
-            userId: user.id,
-            name: meta.name,
-            kind: meta.kind,
-            color: DEFAULT_CATEGORY_COLOR,
-            icon: DEFAULT_CATEGORY_ICON,
-          })
-          .returning({ id: categories.id });
-        catMap.set(key, created.id);
-      } catch {
-        // A concurrent import may have created the same category. Re-read it
-        // instead of silently proceeding with a missing category reference.
-        const [existing] = await tx
-          .select({ id: categories.id })
-          .from(categories)
-          .where(eq(categories.userId, user.id))
-          .limit(1);
-        if (existing) catMap.set(key, existing.id);
-      }
+      // The database has a case-insensitive unique constraint on
+      // (user_id, kind, name). ON CONFLICT makes concurrent imports safe
+      // without relying on a catch/re-query after a failed PostgreSQL statement.
+      const [created] = await tx
+        .insert(categories)
+        .values({
+          userId: user.id,
+          name: meta.name,
+          kind: meta.kind,
+          color: DEFAULT_CATEGORY_COLOR,
+          icon: DEFAULT_CATEGORY_ICON,
+        })
+        .onConflictDoNothing({
+          target: [categories.userId, categories.kind, sql`lower(${categories.name})`],
+        })
+        .returning({ id: categories.id });
+
+      if (created) categoriesCreated += 1;
+
+      const [resolved] = await tx
+        .select({ id: categories.id })
+        .from(categories)
+        .where(
+          and(
+            eq(categories.userId, user.id),
+            eq(categories.kind, meta.kind),
+            sql`lower(${categories.name}) = lower(${meta.name})`,
+          ),
+        )
+        .limit(1);
+
+      if (!resolved) throw new Error("Category could not be resolved after import upsert.");
+      catMap.set(key, resolved.id);
     }
 
     const toInsert = rows.map((r) => {
@@ -106,8 +117,15 @@ export const POST = withUser(async ({ request, user }) => {
       };
     });
 
-    const inserted = await tx.insert(transactions).values(toInsert).returning({ id: transactions.id });
+    const inserted = await tx
+      .insert(transactions)
+      .values(toInsert)
+      .returning({ id: transactions.id });
 
-    return json({ ok: true, importedCount: inserted.length, categoriesCreated: neededCats.size });
+    return json({
+      ok: true,
+      importedCount: inserted.length,
+      categoriesCreated,
+    });
   });
 });
