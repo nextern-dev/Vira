@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://vira-nextern.vercel.app">Live Demo</a>
+  <a href="https://vira.nextern.ir">Live Demo</a>
   &nbsp;·&nbsp;
   <a href="https://github.com/nextern-dev/Vira">Repository</a>
   &nbsp;·&nbsp;
@@ -140,51 +140,6 @@ erDiagram
   users ||--o{ verification_tokens : receives
   categories ||--o{ transactions : classifies
   categories ||--o{ budgets : scopes
-
-  users {
-    uuid id PK
-    text email UK
-    text password_hash
-    text name
-    text currency
-    text provider
-    text avatar_url
-    timestamp email_verified_at
-    appearance_mode appearance_mode
-    color_theme color_theme
-  }
-
-  transactions {
-    uuid id PK
-    uuid user_id FK
-    uuid category_id FK
-    transaction_type type
-    bigint amount_minor
-    date occurred_on
-    text note
-    text client_request_id
-  }
-
-  budgets {
-    uuid id PK
-    uuid user_id FK
-    uuid category_id FK
-    text name
-    bigint limit_minor
-    budget_period period
-    date starts_on
-    date ends_on
-    boolean is_active
-  }
-
-  categories {
-    uuid id PK
-    uuid user_id FK
-    text name
-    transaction_type kind
-    text color
-    text icon
-  }
 ```
 
 ## Tech Stack
